@@ -119,3 +119,7 @@ while True:
     n = input('''Если хотите просканировать новое устройство
             отсоедините текущее устройство, подсоедините
             выключенное новое устройство и нажмите любую клавишу:''')
+    if n == 'q' or 'Q' or 'й' or 'Й':
+        os.system(
+            '''netsh interface ip set address "Ethernet" dhcp''')
+        raise SystemExit(1)
