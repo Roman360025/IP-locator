@@ -1,12 +1,12 @@
 import socket
 import os
-from time import sleep
 from subprocess import Popen
 from subprocess import check_output
 from xml.etree.ElementTree import fromstring
 from ipaddress import IPv4Interface, IPv6Interface
 import zeep
 from pythonping import ping
+
 
 def getNics():
     cmd = 'wmic.exe nicconfig where "IPEnabled  = True" get ipaddress,MACAddress,IPSubnet,DNSHostName,Caption,DefaultIPGateway /format:rawxml'
@@ -64,7 +64,7 @@ while True:
     pkt = None
     nics = getNics()
     ip = []
-    vkl = False
+
     s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
     for i in nics:  # C помощью данных строк, мы исключаем из рассмотрения интерфейсы данного ПК
         ip.append(str(i['ip'][0])[:-3])
