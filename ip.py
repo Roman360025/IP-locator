@@ -7,6 +7,7 @@ from ipaddress import IPv4Interface, IPv6Interface
 import zeep
 from pythonping import ping
 import ctypes, sys
+import keyboard
 
 
 def is_admin():
@@ -104,7 +105,6 @@ if is_admin():
                         ip.append(str(i['ip'][0])[:-3])
 
                 if pkt[1][0] not in ip and pkt[1][0].startswith("192.168.0.1"):
-                    vkl = False
                     print("Динамический IP-адрес устройства: ", pkt[1][0])
                     os.system('''start iexplore "{0}"'''.format(pkt[1][0]))
                     break
@@ -127,13 +127,27 @@ if is_admin():
                             '''netsh interface ipv4 set address name="Ethernet" static 192.168.0.2 255.255.255.0''')
 
         p.kill()
-        n = input('''Если хотите просканировать новое устройство
+        print('''Если хотите просканировать новое устройство
                 отсоедините текущее устройство, подсоедините
-                выключенное новое устройство и нажмите любую клавишу:''')
-        if n == 'q' or 'Q' or 'й' or 'Й':
-            os.system(
-                '''netsh interface ip set address "Ethernet" dhcp''')
+                выключенное новое устройство и нажмите любую клавишу:
+                
+                Если же хотите прекратить работу с программой, то нажмите
+                клавишу "Q"''')
+        while True:
+            try:
+                if keyboard.is_pressed('q'):
+                    os.system(
+                        '''netsh interface ip set address "Ethernet" dhcp''')
+                    vkl = True
+                    break
+                elif keyboard.is_pressed('Enter'):
+                    vkl = False
+                    break
+            except:
+                break
+        if vkl:
             raise SystemExit(1)
+
 else:
     # Re-run the program with admin rights
     ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, __file__, "", 1)
