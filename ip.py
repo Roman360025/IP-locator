@@ -1,13 +1,4 @@
-import socket
-import os
-from subprocess import Popen
-from subprocess import check_output
-from xml.etree.ElementTree import fromstring
-from ipaddress import IPv4Interface, IPv6Interface
-import zeep
-from pythonping import ping
 import ctypes, sys
-import keyboard
 
 
 def is_admin():
@@ -18,10 +9,20 @@ def is_admin():
 
 
 if is_admin():
+    import socket
+    import os
+    from subprocess import Popen
+    from subprocess import check_output
+    import xml.etree.ElementTree
+    from ipaddress import IPv4Interface, IPv6Interface
+    import shutil
+    from time import sleep
+
+
     def getNics():
         cmd = 'wmic.exe nicconfig where "IPEnabled  = True" get ipaddress,MACAddress,IPSubnet,DNSHostName,Caption,DefaultIPGateway /format:rawxml'
         xml_text = check_output(cmd, creationflags=8)
-        xml_root = fromstring(xml_text)
+        xml_root = xml.etree.ElementTree.fromstring(xml_text)
 
         nics = []
         keyslookup = {
@@ -67,17 +68,28 @@ if is_admin():
 
 
     while True:
-
+        shutil.copyfile(os.path.abspath(r"settings\tftpd32.ini"), "tftpd32.ini")
         os.system(
             '''netsh interface ipv4 set address name="Ethernet" static 192.168.0.2 255.255.255.0''')  # Задаём интерфейсу Ethernet статический IP
 
         pkt = None
-        nics = getNics()
+        statbuf = os.stat("tftpd32.ini")
+
+        try:
+            nics = getNics()
+        except xml.etree.ElementTree.ParseError:
+            nics = []
+
         ip = []
 
         s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
-        for i in nics:  # C помощью данных строк, мы исключаем из рассмотрения интерфейсы данного ПК
-            ip.append(str(i['ip'][0])[:-3])
+
+        if nics != []:
+            for i in nics:  # C помощью данных строк, мы исключаем из рассмотрения интерфейсы данного ПК
+                if 'ip' in i and i['ip'] != []:
+                    ip.append(str(i['ip'][0])[:-3])
+                if 'gateway' in i and i['gateway'] != []:
+                    ip.append(str(i['gateway'][0]))
 
         print("Включите устройство")
 
@@ -93,16 +105,20 @@ if is_admin():
 
         print("Идёт поиск...")
 
-        p = Popen('tftpd64.exe')
+        found = False
+        line_old = ""
+
+        p = Popen("tftpd64.exe")
         while True:
             pkt = s.recvfrom(65565)
             if pkt[1][0] not in ip and pkt[1][0] != "0.0.0.0" and pkt[1][0] != "127.0.0.1" and pkt[1][
                 0] != "192.168.0.2":
 
-                nics = getNics()  # C помощью данных строк, мы исключаем из рассмотрения интерфейсы данного ПК
-                for i in nics:
-                    if i not in ip:
-                        ip.append(str(i['ip'][0])[:-3])
+                if pkt[1][0].startswith("192.168.0.1"):
+                    nics = getNics()  # C помощью данных строк, мы исключаем из рассмотрения интерфейсы данного ПК
+                    for i in nics:
+                        if str(i['ip'][0])[:-3] not in ip:
+                            ip.append(str(i['ip'][0])[:-3])
 
                 if pkt[1][0] not in ip and pkt[1][0].startswith("192.168.0.1"):
                     print("Динамический IP-адрес устройства: ", pkt[1][0])
@@ -111,41 +127,58 @@ if is_admin():
                 elif pkt[1][0] not in ip:
                     ip_new = pkt[1][0]
                     n = ip_new.rfind('.') + 1
-                    ip_last = int(ip_new[n:]) + 1
-                    ip_new = ip_new[:n] + str(ip_last)
+                    ip_new = ip_new[:n] + str(253)
+                    while ip_new in ip and ip_new == pkt[1][0]:
+                        ip_last = int(ip_new[n:]) - 1
+                        ip_new = ip_new[:n] + str(ip_last)
                     os.system(
                         '''netsh interface ipv4 set address name="Ethernet" static {0} 255.255.255.0'''.format(ip_new))
-                    responce = ping("{0}".format(pkt[1][0]))
-                    if responce._responses[0].success or responce._responses[1].success or responce._responses[
-                        2].success or \
-                            responce._responses[3].success:
+                    response = os.system("ping {0} > nul".format(pkt[1][0]))
+                    if response == 0:
                         print("IP-адрес устройства: ", pkt[1][0])
                         os.system('''start iexplore "{0}"'''.format(pkt[1][0]))
                         break
                     else:
+                        ip.append(ip_new)
+                        ip.append(pkt[1][0])
                         os.system(
                             '''netsh interface ipv4 set address name="Ethernet" static 192.168.0.2 255.255.255.0''')
 
-        p.kill()
-        print('''Если хотите просканировать новое устройство
-                отсоедините текущее устройство, подсоедините
-                выключенное новое устройство и нажмите любую клавишу:
-                
-                Если же хотите прекратить работу с программой, то нажмите
-                клавишу "Q"''')
-        while True:
-            try:
-                if keyboard.is_pressed('q'):
-                    os.system(
-                        '''netsh interface ip set address "Ethernet" dhcp''')
-                    vkl = True
-                    break
-                elif keyboard.is_pressed('Enter'):
-                    vkl = False
-                    break
-            except:
+            if os.stat("tftpd32.ini") != statbuf:
+                f = open("tftpd32.ini")
+                for line in f:
+                    if line[8:10] == "IP" and "46:46:3A:46:46:3A" not in line_old:
+                        nics = getNics()  # C помощью данных строк, мы исключаем из рассмотрения интерфейсы данного ПК
+                        for i in nics:
+                            if str(i['ip'][0])[:-3] not in ip:
+                                ip.append(str(i['ip'][0])[:-3])
+                        if line[11:-1] not in ip:
+                            response = os.system("ping {0} > nul".format(line[11:-1]))
+                            if response == 0:
+                                f.close()
+                                print("Динамический IP-адрес устройства: ", line[11:-1])
+                                sleep(10)
+                                os.system('''start iexplore "{0}"'''.format(line[11:-1]))
+                                found = True
+                                break
+                            else:
+                                ip.append(line[11:-1])
+                    line_old = line
+                    statbuf = os.stat("tftpd32.ini")
+                f.close()
+
+            if found:
                 break
-        if vkl:
+
+        p.kill()
+
+        n = input('''Если хотите просканировать новое устройство:
+                    1. Отсоедините текущее устройство 
+                    2. Подсоедините выключенное новое устройство
+                    3. Нажмите "Enter":''')
+        if n == 'q' or n == 'Q' or n == 'й' or n == 'Й':
+            os.system(
+                '''netsh interface ip set address "Ethernet" dhcp''')
             raise SystemExit(1)
 
 else:
